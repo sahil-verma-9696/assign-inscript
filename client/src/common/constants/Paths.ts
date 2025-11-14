@@ -1,7 +1,7 @@
 export default {
   Base: "/",
   User: {
-    Base: "/users",
-    Board: "/boards",
+    Base: "/me",
+    Board: "boards",
   },
 } as const;

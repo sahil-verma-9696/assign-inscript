@@ -1,5 +1,11 @@
-import React from "react";
-const PrivateLayout = () => {
-  return <div>PublicLayout</div>;
-};
-export default PrivateLayout;
+import { Outlet } from "react-router";
+import Navbar from "../components/navbar/navbar";
+
+export default function PrivateLayout() {
+  return (
+    <div>
+      <Navbar />
+      <Outlet />
+    </div>
+  );
+}
