@@ -2,8 +2,7 @@ import { Router, RequestHandler } from "express";
 
 import Paths from "@src/common/constants/Paths";
 import UserRoutes from "./UserRoutes";
-import TrelloService from "@src/services/TrelloService";
-
+import TrelloRoutes from "./TrelloRoutes";
 /******************************************************************************
                                 Setup
 ******************************************************************************/
@@ -28,11 +27,21 @@ apiRouter.use(Paths.Users.Base, userRouter);
 const authRouter = Router();
 
 // Login
-authRouter.get(Paths.Auth.Login, TrelloService.login as RequestHandler);
-authRouter.get(Paths.Auth.Callback, TrelloService.callback as RequestHandler);
+authRouter.get(Paths.Auth.Login, TrelloRoutes.login as RequestHandler);
+authRouter.get(Paths.Auth.Callback, TrelloRoutes.callback as RequestHandler);
+authRouter.get(Paths.Auth.Me, TrelloRoutes.me as RequestHandler);
 
 // Add authRouter
 apiRouter.use(Paths.Auth.Base, authRouter);
+
+// Init router
+const trelloRouter = Router();
+
+// Get all boards
+trelloRouter.get(Paths.Trello.boards, TrelloRoutes.boards as RequestHandler);
+
+// Add TrelloRouter
+apiRouter.use(Paths.Trello.Base, trelloRouter);
 
 /******************************************************************************
                                 Export default

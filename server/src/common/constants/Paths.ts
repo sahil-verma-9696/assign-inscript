@@ -12,5 +12,10 @@ export default {
     Login: "/login",
     Logout: "/logout",
     Callback: "/callback",
+    Me: "/me",
+  },
+  Trello: {
+    Base: "/trello",
+    boards: "/boards",
   },
 } as const;
