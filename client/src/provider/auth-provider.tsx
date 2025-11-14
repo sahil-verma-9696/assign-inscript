@@ -75,6 +75,11 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         localStorage.removeItem(StorageKey.ACCESS_TOKEN);
         localStorage.removeItem(StorageKey.EXPIRES_IN);
         setIsAuthenticated(false);
+
+        // if token expired, redirect to login
+        if (window.location.href !== "/") {
+          window.location.href = "/";
+        }
         return;
       } else {
         setIsAuthenticated(true);
@@ -113,6 +118,7 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     localStorage.removeItem(StorageKey.EXPIRES_IN);
     localStorage.removeItem(StorageKey.USER_INFO);
     setIsAuthenticated(false);
+    window.location.href = "/";
   };
 
   /***************************************************************
