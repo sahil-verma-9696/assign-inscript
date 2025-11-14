@@ -21,14 +21,19 @@ const CONFIG = {
 
   socials: [
     {
+      name: "Github Repo",
+      icon: <FaGithub size={24} />,
+      url: "https://github.com/sahil-verma-9696/assign-inscript",
+    },
+    {
       name: "GitHub",
       icon: <FaGithub size={24} />,
-      url: "https://github.com/sahil1000verma",
+      url: "https://github.com/sahil-verma-9696",
     },
     {
       name: "LinkedIn",
       icon: <FaLinkedin size={24} />,
-      url: "https://www.linkedin.com/in/sahil1000verma",
+      url: "https://www.linkedin.com/in/sahilverma200",
     },
   ],
 
