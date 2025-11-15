@@ -12,12 +12,19 @@ import ENV from "@src/common/constants/ENV";
 import HttpStatusCodes from "@src/common/constants/HttpStatusCodes";
 import { RouteError } from "@src/common/util/route-errors";
 import { NodeEnvs } from "@src/common/constants";
+import redisClient from "./redis";
 
 /******************************************************************************
                                 Setup
 ******************************************************************************/
 
 const app = express();
+
+// ***** Connect to Redis ***** //
+
+(async () => {
+  await redisClient.connect();
+})();
 
 // **** Middleware **** //
 

@@ -6,6 +6,7 @@ import { RouteError } from "@src/common/util/route-errors";
 import HttpStatusCodes from "@src/common/constants/HttpStatusCodes";
 import TrelloService from "@src/services/TrelloService";
 import { getExpirationMs } from "@src/common/util/utility-fn";
+import redisClient from "@src/redis";
 
 /******************************************************************************
                                 Constants
@@ -21,11 +22,6 @@ const key = process.env.TRELLO_API_KEY!;
 const secret = process.env.TRELLO_SECRET!;
 
 const loginCallback = "http://localhost:3000/api/auth/callback";
-
-// You should have {"token": "tokenSecret"} pairs in a real application
-// Storage should be more permanent (redis would be a good choice)
-// Temporary in-memory store for token secrets
-const oauthSecrets: Record<string, string> = {};
 
 const oauth = new OAuth(
   requestURL,
@@ -46,71 +42,124 @@ export let oauthAccessToken: null | string = null;
 /**
  * Get OAuth token
  */
-const login: express.RequestHandler = (
-  request: express.Request,
-  response: express.Response
-) => {
-  oauth.getOAuthRequestToken(function (error, token, tokenSecret) {
-    if (error) {
-      throw new RouteError(
-        HttpStatusCodes.NOT_FOUND,
-        "OAuth Request Token failed"
-      );
-    }
-    oauthSecrets[token] = tokenSecret;
+const login: express.RequestHandler = async (request, response, next) => {
+  try {
+    // Promise wrapper around OAuth request token
+    const getOAuthRequestToken = () =>
+      new Promise<{ token: string; tokenSecret: string }>((resolve, reject) => {
+        oauth.getOAuthRequestToken((error, token, tokenSecret) => {
+          if (error) return reject(error);
+          resolve({ token, tokenSecret });
+        });
+      });
 
+    const { token, tokenSecret } = await getOAuthRequestToken();
+
+    /****************************************
+     * Store token & secret in Redis
+     * - Use SETNX (set if not exists) pattern
+     ****************************************/
+    const redisKey = `trello:oauth:${token}`;
+
+    const existing = await redisClient.get(redisKey);
+
+    if (!existing) {
+      // Store secret with expiration (optional)
+      await redisClient.set(redisKey, tokenSecret, {
+        EX: 60 * 10, // 10 minutes (Trello request token short-lived)
+      });
+    }
+
+    // Build Trello authorize redirect
     const redirectUrl = new URL(authorizeURL);
     redirectUrl.searchParams.append("oauth_token", token);
     redirectUrl.searchParams.append("name", appName);
     redirectUrl.searchParams.append("scope", scope);
     redirectUrl.searchParams.append("expiration", expiration);
 
-    response.redirect(redirectUrl.toString());
-  });
+    return response.redirect(redirectUrl.toString());
+  } catch (error: any) {
+    return next(
+      new RouteError(
+        HttpStatusCodes.NOT_FOUND,
+        error?.message || "OAuth Request Token failed"
+      )
+    );
+  }
 };
+
 
 /**
  * Get OAuth access token
  */
-const callback: express.RequestHandler = (
-  req: express.Request,
-  res: express.Response
-) => {
-  // eslint-disable-next-line n/no-deprecated-api
-  const query = url.parse(req.url, true).query;
-  const token = query.oauth_token as string;
-  const verifier = query.oauth_verifier as string;
-  const tokenSecret = oauthSecrets[token];
+const callback: express.RequestHandler = async (req, res, next) => {
+  try {
+    // Parse OAuth callback query
+    const query = url.parse(req.url, true).query;
+    const token = query.oauth_token as string;
+    const verifier = query.oauth_verifier as string;
 
-  if (!token || !verifier || !tokenSecret) {
-    return res.status(400).json({ error: "Invalid OAuth callback" });
-  }
-
-  oauth.getOAuthAccessToken(
-    token,
-    tokenSecret,
-    verifier,
-    (error, accessToken, accessTokenSecret) => {
-      if (error) {
-        return res.status(500).json({ error: "Access token failed" });
-      }
-
-      /**
-       * Store access token in memory temporarily
-       */
-      oauthAccessToken = accessToken;
-
-      const expirationInMiliSec = String(getExpirationMs(expiration));
-
-      const redirectUrl = new URL("http://localhost:5173");
-      redirectUrl.searchParams.append("accessToken", accessToken);
-      redirectUrl.searchParams.append("accessTokenSecret", accessTokenSecret);
-      redirectUrl.searchParams.append("expiresIn", expirationInMiliSec);
-
-      res.redirect(redirectUrl.toString());
+    if (!token || !verifier) {
+      return res.status(400).json({ error: "Invalid OAuth callback" });
     }
-  );
+
+    // Retrieve token secret from Redis
+    const redisKey = `trello:oauth:${token}`;
+    const tokenSecret = await redisClient.get(redisKey);
+
+    if (!tokenSecret) {
+      return res.status(400).json({ error: "OAuth token secret not found or expired" });
+    }
+
+    // Wrap OAuth getAccessToken in a promise
+    const getOAuthAccessToken = () =>
+      new Promise<{
+        accessToken: string;
+        accessTokenSecret: string;
+      }>((resolve, reject) => {
+        oauth.getOAuthAccessToken(
+          token,
+          tokenSecret,
+          verifier,
+          (error, accessToken, accessTokenSecret) => {
+            if (error) return reject(error);
+            resolve({ accessToken, accessTokenSecret });
+          }
+        );
+      });
+
+    // Exchange request token → access token
+    const { accessToken, accessTokenSecret } = await getOAuthAccessToken();
+
+    // (Optional) Store access token securely in Redis instead of memory
+    // expires in 1 hour or whatever Trello allows
+    const accessKey = `trello:access:${accessToken}`;
+    await redisClient.set(accessKey, accessTokenSecret, {
+      EX: getExpirationMs(expiration) / 1000, // convert milliseconds → seconds
+    });
+
+    // Also store globally (if you need it across service)
+    oauthAccessToken = accessToken;
+
+    // Build client redirect URL
+    const expirationInMiliSec = String(getExpirationMs(expiration));
+
+    const redirectUrl = new URL(process.env.CLIENT_BASE_URL!);
+    redirectUrl.searchParams.append("accessToken", accessToken);
+    redirectUrl.searchParams.append("accessTokenSecret", accessTokenSecret);
+    redirectUrl.searchParams.append("expiresIn", expirationInMiliSec);
+
+    return res.redirect(redirectUrl.toString());
+  } catch (error: any) {
+    return next(
+      new RouteError(
+        HttpStatusCodes.INTERNAL_SERVER_ERROR,
+        error?.message || "OAuth Access Token failed"
+      )
+    );
+  }
 };
+
 
 /**
  * Get all boards
@@ -167,6 +216,11 @@ const me: express.RequestHandler = async (
     return res.status(500).json({ error: "Internal Server Error" });
   }
 };
+/******************************************************************************
+                                Webhook
+******************************************************************************/
+
+
 
 /******************************************************************************
                                 Export default

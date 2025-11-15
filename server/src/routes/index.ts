@@ -40,6 +40,16 @@ const trelloRouter = Router();
 // Get all boards
 trelloRouter.get(Paths.Trello.boards, TrelloRoutes.boards as RequestHandler);
 
+trelloRouter.head(`${Paths.Trello.boards}/webhook`, (req, res) => {
+  return res.sendStatus(200);
+});
+
+trelloRouter.post(`${Paths.Trello.boards}/webhook`, (req, res) => {
+  console.log("webhook");
+  console.log(req.body);
+  res.sendStatus(200);
+});
+
 // Add TrelloRouter
 apiRouter.use(Paths.Trello.Base, trelloRouter);
 

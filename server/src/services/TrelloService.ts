@@ -28,6 +28,13 @@ async function getAllBoards({ token }: { token: string }) {
   return responce.json();
 }
 
+/**
+ * Webhook
+ */
+async function webhook(){
+
+};
+
 /******************************************************************************
                                 Export default
 ******************************************************************************/
